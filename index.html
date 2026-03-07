@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EISY Controller</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #242836;
+  --border: #2e3345;
+  --text: #e4e7ef;
+  --text2: #8b90a0;
+  --accent: #4c9aff;
+  --accent2: #2b7de9;
+  --green: #36b37e;
+  --yellow: #ffab00;
+  --red: #ff5630;
+  --orange: #ff8b00;
+  --radius: 8px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* Login */
+#login-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+.login-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 40px;
+  width: 100%;
+  max-width: 400px;
+}
+.login-box h1 {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+.login-box p {
+  color: var(--text2);
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+.field { margin-bottom: 16px; }
+.field label {
+  display: block;
+  font-size: 13px;
+  color: var(--text2);
+  margin-bottom: 6px;
+}
+.field input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+.field input:focus { border-color: var(--accent); }
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  padding: 10px 20px;
+  width: 100%;
+}
+.btn-primary:hover { background: var(--accent2); }
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 12px;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-sm:hover { background: var(--border); }
+.btn-on { background: var(--green); color: #fff; border: none; }
+.btn-on:hover { filter: brightness(0.9); }
+.btn-off { background: var(--red); color: #fff; border: none; }
+.btn-off:hover { filter: brightness(0.9); }
+.btn-run { background: var(--accent); color: #fff; border: none; }
+.btn-run:hover { filter: brightness(0.9); }
+.error-msg {
+  color: var(--red);
+  font-size: 13px;
+  margin-top: 12px;
+  display: none;
+}
+
+/* Main app */
+#app { display: none; }
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+header h1 {
+  font-size: 18px;
+  font-weight: 600;
+}
+.header-actions { display: flex; gap: 8px; align-items: center; }
+.header-actions .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  display: inline-block;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  overflow-x: auto;
+}
+.tab {
+  padding: 12px 20px;
+  font-size: 14px;
+  color: var(--text2);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--text); }
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* Content */
+.content {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* Search */
+.search-bar {
+  margin-bottom: 16px;
+}
+.search-bar input {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+.search-bar input:focus { border-color: var(--accent); }
+
+/* Folder/group headers */
+.folder-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text2);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+.folder-header .arrow {
+  transition: transform 0.15s;
+  font-size: 10px;
+}
+.folder-header.collapsed .arrow { transform: rotate(-90deg); }
+.folder-contents { }
+.folder-contents.collapsed { display: none; }
+
+/* Device cards */
+.device-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.device-info {
+  flex: 1;
+  min-width: 0;
+}
+.device-name {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.device-addr {
+  font-size: 11px;
+  color: var(--text2);
+  margin-top: 2px;
+}
+.device-status {
+  font-size: 12px;
+  margin-top: 4px;
+}
+.device-status .on { color: var(--green); }
+.device-status .off { color: var(--text2); }
+.device-status .value { color: var(--yellow); }
+.device-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.slider-wrap input[type="range"] {
+  width: 80px;
+  accent-color: var(--accent);
+}
+.slider-val {
+  font-size: 11px;
+  color: var(--text2);
+  min-width: 30px;
+  text-align: right;
+}
+
+/* Program cards */
+.program-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 8px;
+}
+.program-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.program-info { flex: 1; min-width: 0; }
+.program-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+.program-meta {
+  font-size: 11px;
+  color: var(--text2);
+  margin-top: 4px;
+}
+.program-status-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+.program-status-badge.idle { background: var(--surface2); color: var(--text2); }
+.program-status-badge.running { background: rgba(76,154,255,0.15); color: var(--accent); }
+.program-status-badge.true-status { background: rgba(54,179,126,0.15); color: var(--green); }
+.program-status-badge.false-status { background: rgba(255,86,48,0.15); color: var(--red); }
+.program-controls {
+  display: flex;
+  gap: 6px;
+}
+
+/* Variable cards */
+.var-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.var-info { flex: 1; min-width: 0; }
+.var-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+.var-detail {
+  font-size: 11px;
+  color: var(--text2);
+  margin-top: 2px;
+}
+.var-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--yellow);
+  margin-right: 12px;
+}
+.var-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.var-controls input[type="number"] {
+  width: 80px;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+/* Loading/empty */
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--text2);
+}
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 20px;
+  font-size: 13px;
+  z-index: 1000;
+  animation: slideUp 0.2s ease;
+  max-width: 320px;
+}
+.toast.success { border-left: 3px solid var(--green); }
+.toast.error { border-left: 3px solid var(--red); }
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .content { padding: 12px; }
+  .device-card { flex-direction: column; align-items: stretch; }
+  .device-controls { justify-content: flex-end; }
+  .slider-wrap input[type="range"] { width: 100%; }
+  .var-card { flex-direction: column; align-items: stretch; }
+}
+</style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="login-screen">
+  <div class="login-box">
+    <h1>EISY Controller</h1>
+    <p>Connect to your Universal Devices EISY via the UD Portal</p>
+    <div class="field">
+      <label>Portal URL (to ISY)</label>
+      <input type="text" id="login-url" placeholder="https://my.isy.io/isy/..." />
+    </div>
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="login-user" placeholder="user@example.com" />
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="login-pass" placeholder="Password" />
+    </div>
+    <button class="btn-primary" onclick="doLogin()">Connect</button>
+    <div class="error-msg" id="login-error"></div>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="app">
+  <header>
+    <h1>EISY Controller</h1>
+    <div class="header-actions">
+      <span class="status-dot" id="conn-dot"></span>
+      <span id="conn-label" style="font-size:12px;color:var(--text2)">Connected</span>
+      <button class="btn-sm" onclick="refreshAll()">Refresh</button>
+      <button class="btn-sm" onclick="doLogout()">Logout</button>
+    </div>
+  </header>
+  <div class="tabs">
+    <button class="tab active" data-tab="devices" onclick="switchTab('devices')">Devices</button>
+    <button class="tab" data-tab="scenes" onclick="switchTab('scenes')">Scenes</button>
+    <button class="tab" data-tab="programs" onclick="switchTab('programs')">Programs</button>
+    <button class="tab" data-tab="variables" onclick="switchTab('variables')">Variables</button>
+  </div>
+  <div class="content">
+    <div class="search-bar">
+      <input type="text" id="search-input" placeholder="Search..." oninput="filterItems()" />
+    </div>
+
+    <div id="panel-devices" class="tab-panel active"></div>
+    <div id="panel-scenes" class="tab-panel"></div>
+    <div id="panel-programs" class="tab-panel"></div>
+    <div id="panel-variables" class="tab-panel"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let BASE_URL = '';
+let AUTH = '';
+let nodes = [];
+let groups = [];
+let folders = [];
+let programs = [];
+let programFolders = [];
+let intVars = [];
+let stateVars = [];
+let statusMap = {};
+
+// ── API helpers ──
+function api(path, method = 'GET') {
+  const url = BASE_URL + path;
+  return fetch(url, {
+    method,
+    headers: { 'Authorization': 'Basic ' + AUTH },
+  }).then(r => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.text();
+  }).then(xml => new DOMParser().parseFromString(xml, 'text/xml'));
+}
+
+function showToast(msg, type = 'success') {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// ── Login ──
+function doLogin() {
+  const url = document.getElementById('login-url').value.trim().replace(/\/+$/, '');
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+
+  if (!url || !user || !pass) {
+    errEl.textContent = 'All fields are required';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  BASE_URL = url;
+  AUTH = btoa(user + ':' + pass);
+  errEl.style.display = 'none';
+
+  // Test connection
+  api('/rest/config').then(xml => {
+    const model = xml.querySelector('model');
+    if (model) {
+      showToast('Connected to ' + model.textContent);
+    }
+    // Save to localStorage
+    localStorage.setItem('eisy_url', url);
+    localStorage.setItem('eisy_user', user);
+    localStorage.setItem('eisy_auth', AUTH);
+
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    refreshAll();
+  }).catch(err => {
+    errEl.textContent = 'Connection failed: ' + err.message + '. Check URL and credentials.';
+    errEl.style.display = 'block';
+  });
+}
+
+function doLogout() {
+  localStorage.removeItem('eisy_url');
+  localStorage.removeItem('eisy_user');
+  localStorage.removeItem('eisy_auth');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+// Auto-login from saved session
+(function autoLogin() {
+  const url = localStorage.getItem('eisy_url');
+  const user = localStorage.getItem('eisy_user');
+  const auth = localStorage.getItem('eisy_auth');
+  if (url && auth) {
+    document.getElementById('login-url').value = url;
+    document.getElementById('login-user').value = user || '';
+    BASE_URL = url;
+    AUTH = auth;
+    // Attempt reconnect silently
+    api('/rest/config').then(() => {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      refreshAll();
+    }).catch(() => {
+      // Session expired, show login
+    });
+  }
+})();
+
+// ── Data loading ──
+async function refreshAll() {
+  const panels = ['devices', 'scenes', 'programs', 'variables'];
+  panels.forEach(p => {
+    document.getElementById('panel-' + p).innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+  });
+
+  try {
+    const [nodesXml, statusXml] = await Promise.all([
+      api('/rest/nodes'),
+      api('/rest/status')
+    ]);
+    parseNodes(nodesXml);
+    parseStatus(statusXml);
+    renderDevices();
+    renderScenes();
+  } catch (e) {
+    document.getElementById('panel-devices').innerHTML = '<div class="loading">Failed to load nodes: ' + e.message + '</div>';
+  }
+
+  try {
+    const progXml = await api('/rest/programs?subfolders=true');
+    parsePrograms(progXml);
+    renderPrograms();
+  } catch (e) {
+    document.getElementById('panel-programs').innerHTML = '<div class="loading">Failed to load programs: ' + e.message + '</div>';
+  }
+
+  try {
+    const [intDefs, stateDefs, intVals, stateVals] = await Promise.all([
+      api('/rest/vars/definitions/1'),
+      api('/rest/vars/definitions/2'),
+      api('/rest/vars/get/1'),
+      api('/rest/vars/get/2')
+    ]);
+    parseVariables(intDefs, stateDefs, intVals, stateVals);
+    renderVariables();
+  } catch (e) {
+    document.getElementById('panel-variables').innerHTML = '<div class="loading">Failed to load variables: ' + e.message + '</div>';
+  }
+
+  document.getElementById('conn-dot').style.background = 'var(--green)';
+  document.getElementById('conn-label').textContent = 'Connected';
+}
+
+function parseNodes(xml) {
+  nodes = [];
+  groups = [];
+  folders = [];
+
+  xml.querySelectorAll('node').forEach(n => {
+    const flag = n.getAttribute('flag');
+    nodes.push({
+      address: n.querySelector('address')?.textContent || '',
+      name: n.querySelector('name')?.textContent || '',
+      type: n.getAttribute('nodeDefId') || n.querySelector('type')?.textContent || '',
+      enabled: n.querySelector('enabled')?.textContent !== 'false',
+      folder: n.querySelector('parent')?.textContent || '',
+      parentType: n.querySelector('parent')?.getAttribute('type') || '',
+      flag: flag,
+      pnode: n.querySelector('pnode')?.textContent || '',
+      property: null
+    });
+  });
+
+  xml.querySelectorAll('group').forEach(g => {
+    const members = [];
+    g.querySelectorAll('link').forEach(l => members.push(l.textContent));
+    groups.push({
+      address: g.querySelector('address')?.textContent || '',
+      name: g.querySelector('name')?.textContent || '',
+      family: g.getAttribute('family') || '',
+      folder: g.querySelector('parent')?.textContent || '',
+      members: members,
+      flag: g.getAttribute('flag')
+    });
+  });
+
+  xml.querySelectorAll('folder').forEach(f => {
+    folders.push({
+      address: f.querySelector('address')?.textContent || '',
+      name: f.querySelector('name')?.textContent || ''
+    });
+  });
+}
+
+function parseStatus(xml) {
+  statusMap = {};
+  xml.querySelectorAll('node').forEach(n => {
+    const id = n.getAttribute('id');
+    const props = {};
+    n.querySelectorAll('property').forEach(p => {
+      props[p.getAttribute('id')] = {
+        value: p.getAttribute('value'),
+        formatted: p.getAttribute('formatted'),
+        uom: p.getAttribute('uom')
+      };
+    });
+    statusMap[id] = props;
+  });
+}
+
+function parsePrograms(xml) {
+  programs = [];
+  programFolders = [];
+
+  xml.querySelectorAll('program').forEach(p => {
+    const isFolder = p.getAttribute('folder') === 'true';
+    const item = {
+      id: p.getAttribute('id'),
+      name: p.querySelector('name')?.textContent || '',
+      parentId: p.getAttribute('parentId') || '',
+      status: p.getAttribute('status'),
+      enabled: p.getAttribute('enabled') === 'true',
+      runAtStartup: p.getAttribute('runAtStartup'),
+      running: p.getAttribute('running'),
+      lastRunTime: p.querySelector('lastRunTime')?.textContent || '',
+      lastFinishTime: p.querySelector('lastFinishTime')?.textContent || '',
+      isFolder: isFolder
+    };
+    if (isFolder) {
+      programFolders.push(item);
+    } else {
+      programs.push(item);
+    }
+  });
+}
+
+function parseVariables(intDefs, stateDefs, intVals, stateVals) {
+  intVars = [];
+  stateVars = [];
+
+  const intNames = {};
+  intDefs.querySelectorAll('e').forEach(e => {
+    intNames[e.getAttribute('id')] = e.getAttribute('name');
+  });
+  intVals.querySelectorAll('var').forEach(v => {
+    const id = v.getAttribute('id');
+    intVars.push({
+      id: id,
+      name: intNames[id] || 'Variable ' + id,
+      type: 1,
+      val: v.querySelector('val')?.textContent || '0',
+      init: v.querySelector('init')?.textContent || '0',
+      ts: v.querySelector('ts')?.textContent || ''
+    });
+  });
+
+  const stateNames = {};
+  stateDefs.querySelectorAll('e').forEach(e => {
+    stateNames[e.getAttribute('id')] = e.getAttribute('name');
+  });
+  stateVals.querySelectorAll('var').forEach(v => {
+    const id = v.getAttribute('id');
+    stateVars.push({
+      id: id,
+      name: stateNames[id] || 'State ' + id,
+      type: 2,
+      val: v.querySelector('val')?.textContent || '0',
+      init: v.querySelector('init')?.textContent || '0',
+      ts: v.querySelector('ts')?.textContent || ''
+    });
+  });
+}
+
+// ── Rendering ──
+function getFolderName(addr) {
+  const f = folders.find(f => f.address === addr);
+  return f ? f.name : 'Other';
+}
+
+function getStatusDisplay(address) {
+  const st = statusMap[address];
+  if (!st) return { text: '', cls: 'off' };
+  const prop = st['ST'];
+  if (!prop) return { text: '', cls: 'off' };
+
+  const val = parseInt(prop.value);
+  if (prop.formatted) {
+    if (prop.formatted === 'On') return { text: 'On', cls: 'on' };
+    if (prop.formatted === 'Off') return { text: 'Off', cls: 'off' };
+    return { text: prop.formatted + (prop.uom ? '' : ''), cls: 'value' };
+  }
+  if (val === 0) return { text: 'Off', cls: 'off' };
+  if (val === 255) return { text: 'On', cls: 'on' };
+  // Insteon uses 0-255, percentage = val/255*100
+  const pct = Math.round(val / 255 * 100);
+  return { text: pct + '%', cls: 'value' };
+}
+
+function isDimmable(node) {
+  const t = (node.type || '').toLowerCase();
+  return t.includes('dimmer') || t.includes('dimmable') || t.includes('lamplinc') ||
+         t.includes('switchlinc') || t.includes('keypadlinc');
+}
+
+function renderDevices() {
+  const panel = document.getElementById('panel-devices');
+  // Group by folder
+  const byFolder = {};
+  nodes.forEach(n => {
+    // Skip nodes that are sub-devices (e.g., button 2, 3... of a KeypadLinc)
+    const folderName = getFolderName(n.folder);
+    if (!byFolder[folderName]) byFolder[folderName] = [];
+    byFolder[folderName].push(n);
+  });
+
+  let html = '';
+  for (const [folder, items] of Object.entries(byFolder)) {
+    html += `<div class="folder-header" onclick="toggleFolder(this)">
+      <span class="arrow">&#9660;</span> ${esc(folder)} (${items.length})
+    </div><div class="folder-contents">`;
+    items.forEach(n => {
+      const status = getStatusDisplay(n.address);
+      const addrEnc = encodeURIComponent(n.address);
+      const canDim = isDimmable(n);
+      const st = statusMap[n.address];
+      const curVal = st && st['ST'] ? parseInt(st['ST'].value) || 0 : 0;
+      const pct = Math.round(curVal / 255 * 100);
+
+      html += `<div class="device-card" data-name="${esc(n.name).toLowerCase()}" data-addr="${esc(n.address)}">
+        <div class="device-info">
+          <div class="device-name">${esc(n.name)}</div>
+          <div class="device-addr">${esc(n.address)} &middot; ${esc(n.type)}</div>
+          <div class="device-status"><span class="${status.cls}">${status.text}</span></div>
+        </div>
+        <div class="device-controls">
+          ${canDim ? `<div class="slider-wrap">
+            <input type="range" min="0" max="100" value="${pct}"
+              onchange="dimDevice('${addrEnc}', this.value, this)"
+              oninput="this.nextElementSibling.textContent = this.value + '%'" />
+            <span class="slider-val">${pct}%</span>
+          </div>` : ''}
+          <button class="btn-sm btn-on" onclick="cmdDevice('${addrEnc}','DON')">On</button>
+          <button class="btn-sm btn-off" onclick="cmdDevice('${addrEnc}','DOF')">Off</button>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  panel.innerHTML = html || '<div class="loading">No devices found</div>';
+}
+
+function renderScenes() {
+  const panel = document.getElementById('panel-scenes');
+  if (!groups.length) {
+    panel.innerHTML = '<div class="loading">No scenes found</div>';
+    return;
+  }
+
+  const byFolder = {};
+  groups.forEach(g => {
+    const folderName = getFolderName(g.folder);
+    if (!byFolder[folderName]) byFolder[folderName] = [];
+    byFolder[folderName].push(g);
+  });
+
+  let html = '';
+  for (const [folder, items] of Object.entries(byFolder)) {
+    html += `<div class="folder-header" onclick="toggleFolder(this)">
+      <span class="arrow">&#9660;</span> ${esc(folder)} (${items.length})
+    </div><div class="folder-contents">`;
+    items.forEach(g => {
+      const addrEnc = encodeURIComponent(g.address);
+      const status = getStatusDisplay(g.address);
+      html += `<div class="device-card" data-name="${esc(g.name).toLowerCase()}" data-addr="${esc(g.address)}">
+        <div class="device-info">
+          <div class="device-name">${esc(g.name)}</div>
+          <div class="device-addr">Scene &middot; ${g.members.length} member${g.members.length !== 1 ? 's' : ''}</div>
+          <div class="device-status"><span class="${status.cls}">${status.text}</span></div>
+        </div>
+        <div class="device-controls">
+          <button class="btn-sm btn-on" onclick="cmdDevice('${addrEnc}','DON')">On</button>
+          <button class="btn-sm btn-off" onclick="cmdDevice('${addrEnc}','DOF')">Off</button>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  panel.innerHTML = html;
+}
+
+function renderPrograms() {
+  const panel = document.getElementById('panel-programs');
+  if (!programs.length) {
+    panel.innerHTML = '<div class="loading">No programs found</div>';
+    return;
+  }
+
+  // Group by parent folder
+  const folderMap = {};
+  programFolders.forEach(f => folderMap[f.id] = f.name);
+
+  const byFolder = {};
+  programs.forEach(p => {
+    const fname = folderMap[p.parentId] || 'Other';
+    if (!byFolder[fname]) byFolder[fname] = [];
+    byFolder[fname].push(p);
+  });
+
+  let html = '';
+  for (const [folder, items] of Object.entries(byFolder)) {
+    html += `<div class="folder-header" onclick="toggleFolder(this)">
+      <span class="arrow">&#9660;</span> ${esc(folder)} (${items.length})
+    </div><div class="folder-contents">`;
+    items.forEach(p => {
+      const statusCls = p.status === 'true' ? 'true-status' :
+                         p.status === 'false' ? 'false-status' :
+                         p.running === 'true' ? 'running' : 'idle';
+      const statusText = p.running === 'true' ? 'Running' :
+                          p.status === 'true' ? 'True' :
+                          p.status === 'false' ? 'False' : 'Idle';
+      html += `<div class="program-card" data-name="${esc(p.name).toLowerCase()}">
+        <div class="program-header">
+          <div class="program-info">
+            <div class="program-name">${esc(p.name)}</div>
+            <div class="program-meta">
+              ${p.enabled ? '' : '<span style="color:var(--red)">Disabled</span> &middot; '}
+              Last run: ${p.lastRunTime || 'never'}
+            </div>
+          </div>
+          <span class="program-status-badge ${statusCls}">${statusText}</span>
+          <div class="program-controls">
+            <button class="btn-sm btn-run" onclick="runProgram('${p.id}','runThen')" title="Run Then">Run Then</button>
+            <button class="btn-sm btn-run" onclick="runProgram('${p.id}','runElse')" title="Run Else">Run Else</button>
+            <button class="btn-sm" onclick="runProgram('${p.id}','stop')" title="Stop">Stop</button>
+            <button class="btn-sm" onclick="toggleProgram('${p.id}', ${!p.enabled})" title="${p.enabled ? 'Disable' : 'Enable'}">
+              ${p.enabled ? 'Disable' : 'Enable'}
+            </button>
+          </div>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  panel.innerHTML = html;
+}
+
+function renderVariables() {
+  const panel = document.getElementById('panel-variables');
+  if (!intVars.length && !stateVars.length) {
+    panel.innerHTML = '<div class="loading">No variables found</div>';
+    return;
+  }
+
+  let html = '';
+
+  if (intVars.length) {
+    html += `<div class="folder-header" onclick="toggleFolder(this)">
+      <span class="arrow">&#9660;</span> Integer Variables (${intVars.length})
+    </div><div class="folder-contents">`;
+    intVars.forEach(v => {
+      html += varCard(v);
+    });
+    html += '</div>';
+  }
+
+  if (stateVars.length) {
+    html += `<div class="folder-header" onclick="toggleFolder(this)">
+      <span class="arrow">&#9660;</span> State Variables (${stateVars.length})
+    </div><div class="folder-contents">`;
+    stateVars.forEach(v => {
+      html += varCard(v);
+    });
+    html += '</div>';
+  }
+
+  panel.innerHTML = html;
+}
+
+function varCard(v) {
+  return `<div class="var-card" data-name="${esc(v.name).toLowerCase()}">
+    <div class="var-info">
+      <div class="var-name">${esc(v.name)}</div>
+      <div class="var-detail">Type ${v.type} &middot; ID ${v.id} &middot; Init: ${v.init}${v.ts ? ' &middot; ' + v.ts : ''}</div>
+    </div>
+    <div class="var-value">${v.val}</div>
+    <div class="var-controls">
+      <input type="number" id="var-input-${v.type}-${v.id}" placeholder="New value" />
+      <button class="btn-sm btn-run" onclick="setVar(${v.type}, ${v.id})">Set</button>
+    </div>
+  </div>`;
+}
+
+// ── Actions ──
+function cmdDevice(addr, cmd) {
+  api('/rest/nodes/' + addr + '/cmd/' + cmd)
+    .then(() => {
+      showToast(cmd === 'DON' ? 'Turned on' : 'Turned off');
+      setTimeout(() => refreshStatus(), 500);
+    })
+    .catch(e => showToast('Command failed: ' + e.message, 'error'));
+}
+
+function dimDevice(addr, pct, el) {
+  // Convert percentage (0-100) to ISY level (0-255)
+  const level = Math.round(pct * 255 / 100);
+  api('/rest/nodes/' + addr + '/cmd/DON/' + level)
+    .then(() => {
+      showToast('Set to ' + pct + '%');
+      setTimeout(() => refreshStatus(), 500);
+    })
+    .catch(e => showToast('Dim failed: ' + e.message, 'error'));
+}
+
+function runProgram(id, action) {
+  api('/rest/programs/' + id + '/' + action)
+    .then(() => showToast('Program ' + action))
+    .catch(e => showToast('Failed: ' + e.message, 'error'));
+}
+
+function toggleProgram(id, enable) {
+  const action = enable ? 'enable' : 'disable';
+  api('/rest/programs/' + id + '/' + action)
+    .then(() => {
+      showToast('Program ' + action + 'd');
+      setTimeout(refreshAll, 500);
+    })
+    .catch(e => showToast('Failed: ' + e.message, 'error'));
+}
+
+function setVar(type, id) {
+  const input = document.getElementById('var-input-' + type + '-' + id);
+  const val = input.value;
+  if (val === '') return;
+  api('/rest/vars/set/' + type + '/' + id + '/' + val)
+    .then(() => {
+      showToast('Variable set to ' + val);
+      input.value = '';
+      setTimeout(refreshAll, 500);
+    })
+    .catch(e => showToast('Failed: ' + e.message, 'error'));
+}
+
+async function refreshStatus() {
+  try {
+    const xml = await api('/rest/status');
+    parseStatus(xml);
+    // Re-render current tab
+    const activeTab = document.querySelector('.tab.active')?.dataset.tab;
+    if (activeTab === 'devices') renderDevices();
+    if (activeTab === 'scenes') renderScenes();
+  } catch (e) {
+    // silent
+  }
+}
+
+// ── UI helpers ──
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+  filterItems();
+}
+
+function toggleFolder(el) {
+  el.classList.toggle('collapsed');
+  el.nextElementSibling.classList.toggle('collapsed');
+}
+
+function filterItems() {
+  const q = document.getElementById('search-input').value.toLowerCase().trim();
+  const activePanel = document.querySelector('.tab-panel.active');
+  if (!activePanel) return;
+  activePanel.querySelectorAll('[data-name]').forEach(card => {
+    const name = card.getAttribute('data-name');
+    card.style.display = (!q || name.includes(q)) ? '' : 'none';
+  });
+}
+
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str || '';
+  return d.innerHTML;
+}
+</script>
+</body>
+</html>
