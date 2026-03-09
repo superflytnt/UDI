@@ -444,6 +444,11 @@ header h1 {
     <div id="panel-scenes" class="tab-panel"></div>
     <div id="panel-programs" class="tab-panel"></div>
     <div id="panel-variables" class="tab-panel"></div>
+
+    <details style="margin-top:24px;font-size:12px;color:var(--text2);">
+      <summary style="cursor:pointer;">Debug Log</summary>
+      <pre id="debug-log" style="background:var(--bg);padding:12px;border-radius:var(--radius);margin-top:8px;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;"></pre>
+    </details>
   </div>
 </div>
 
@@ -483,22 +488,53 @@ function buildProxiedUrl(targetUrl) {
   return proxy.prefix + encodeURIComponent(authedUrl);
 }
 
+// Debug log — visible in a collapsible panel
+const debugLog = [];
+function dbg(msg) {
+  const ts = new Date().toLocaleTimeString();
+  debugLog.push('[' + ts + '] ' + msg);
+  console.log('[EISY]', msg);
+  const el = document.getElementById('debug-log');
+  if (el) el.textContent = debugLog.join('\n');
+}
+
 function api(path, method = 'GET') {
   const targetUrl = BASE_URL + path;
+  let url;
   if (USE_PROXY) {
-    const url = buildProxiedUrl(targetUrl);
-    return fetch(url, { method }).then(r => {
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.text();
-    }).then(xml => new DOMParser().parseFromString(xml, 'text/xml'));
+    url = buildProxiedUrl(targetUrl);
+  } else {
+    url = targetUrl;
   }
-  return fetch(targetUrl, {
+  const opts = USE_PROXY ? { method } : {
     method,
     headers: { 'Authorization': 'Basic ' + AUTH },
-  }).then(r => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  };
+  dbg('API ' + method + ' ' + path);
+  const t0 = Date.now();
+  // Add timeout for data calls
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  if (opts.signal) { /* keep existing signal */ } else { opts.signal = controller.signal; }
+  return fetch(url, opts).then(r => {
+    clearTimeout(timeoutId);
+    dbg('  ' + path + ' → HTTP ' + r.status + ' (' + (Date.now() - t0) + 'ms)');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.text();
-  }).then(xml => new DOMParser().parseFromString(xml, 'text/xml'));
+  }).then(text => {
+    dbg('  ' + path + ' body: ' + text.length + ' chars, starts: ' + text.substring(0, 120).replace(/\n/g, ' '));
+    // Check if response looks like XML
+    const trimmed = text.trim();
+    if (!trimmed || trimmed[0] !== '<') {
+      throw new Error('Not XML: ' + trimmed.substring(0, 200));
+    }
+    const xml = new DOMParser().parseFromString(text, 'text/xml');
+    const parseErr = xml.querySelector('parsererror');
+    if (parseErr) {
+      throw new Error('XML parse error: ' + parseErr.textContent.substring(0, 200));
+    }
+    return xml;
+  });
 }
 
 function showToast(msg, type = 'success') {
@@ -535,16 +571,39 @@ function doLogin() {
 
 function tryConnect(errEl, user) {
   const proxyName = USE_PROXY ? CORS_PROXIES[currentProxyIndex].name : 'direct';
-  errEl.textContent = 'Trying ' + proxyName + '...';
+  errEl.textContent = 'Connecting via ' + proxyName + '...';
   errEl.style.display = 'block';
   errEl.style.color = 'var(--text2)';
+  dbg('Trying proxy: ' + proxyName + ' (index ' + currentProxyIndex + ')');
 
-  api('/rest/config').then(xml => {
+  // Use a timeout so we don't wait forever on a slow/broken proxy
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+
+  const targetUrl = BASE_URL + '/rest/config';
+  let url, opts;
+  if (USE_PROXY) {
+    url = buildProxiedUrl(targetUrl);
+    opts = { signal: controller.signal };
+  } else {
+    url = targetUrl;
+    opts = { signal: controller.signal, headers: { 'Authorization': 'Basic ' + AUTH } };
+  }
+
+  fetch(url, opts).then(r => {
+    clearTimeout(timeout);
+    dbg('Config response: HTTP ' + r.status);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.text();
+  }).then(text => {
+    dbg('Config body (' + text.length + ' chars): ' + text.substring(0, 150).replace(/\n/g, ' '));
+    const xml = new DOMParser().parseFromString(text, 'text/xml');
     errEl.style.display = 'none';
     errEl.style.color = '';
-    const model = xml.querySelector('model');
+    const model = xml.getElementsByTagName('model')[0];
     if (model) {
       showToast('Connected to ' + model.textContent);
+      dbg('Connected! Model: ' + model.textContent);
     }
     // Save to localStorage
     localStorage.setItem('eisy_url', BASE_URL);
@@ -557,13 +616,16 @@ function tryConnect(errEl, user) {
     document.getElementById('app').style.display = 'block';
     refreshAll();
   }).catch(err => {
+    clearTimeout(timeout);
+    const msg = err.name === 'AbortError' ? 'Timeout' : err.message;
+    dbg('Proxy ' + proxyName + ' failed: ' + msg);
     // Try next proxy if available
     if (USE_PROXY && currentProxyIndex < CORS_PROXIES.length - 1) {
       currentProxyIndex++;
       tryConnect(errEl, user);
     } else {
       errEl.style.color = '';
-      errEl.textContent = 'Connection failed: ' + err.message + '. Check URL and credentials.';
+      errEl.textContent = 'Connection failed: ' + msg + '. Check URL and credentials.';
       errEl.style.display = 'block';
     }
   });
@@ -609,47 +671,67 @@ function doLogout() {
 
 // ── Data loading ──
 async function refreshAll() {
+  dbg('refreshAll started');
   const panels = ['devices', 'scenes', 'programs', 'variables'];
   panels.forEach(p => {
     document.getElementById('panel-' + p).innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
   });
 
-  try {
-    const [nodesXml, statusXml] = await Promise.all([
-      api('/rest/nodes'),
-      api('/rest/status')
-    ]);
-    parseNodes(nodesXml);
-    parseStatus(statusXml);
-    renderDevices();
-    renderScenes();
-  } catch (e) {
-    document.getElementById('panel-devices').innerHTML = '<div class="loading">Failed to load nodes: ' + e.message + '</div>';
-  }
+  // Fire ALL requests in parallel for speed
+  const results = await Promise.allSettled([
+    api('/rest/nodes'),
+    api('/rest/status'),
+    api('/rest/programs?subfolders=true'),
+    api('/rest/vars/definitions/1'),
+    api('/rest/vars/definitions/2'),
+    api('/rest/vars/get/1'),
+    api('/rest/vars/get/2')
+  ]);
 
-  try {
-    const progXml = await api('/rest/programs?subfolders=true');
-    parsePrograms(progXml);
+  const [nodesRes, statusRes, progsRes, intDefsRes, stateDefsRes, intValsRes, stateValsRes] = results;
+
+  // Nodes + Status
+  if (nodesRes.status === 'fulfilled') {
+    parseNodes(nodesRes.value);
+    dbg('Parsed: ' + nodes.length + ' nodes, ' + groups.length + ' groups, ' + folders.length + ' folders');
+  } else {
+    dbg('FAILED /rest/nodes: ' + nodesRes.reason);
+  }
+  if (statusRes.status === 'fulfilled') {
+    parseStatus(statusRes.value);
+    dbg('Parsed: ' + Object.keys(statusMap).length + ' status entries');
+  } else {
+    dbg('FAILED /rest/status: ' + statusRes.reason);
+  }
+  renderDevices();
+  renderScenes();
+
+  // Programs
+  if (progsRes.status === 'fulfilled') {
+    parsePrograms(progsRes.value);
+    dbg('Parsed: ' + programs.length + ' programs, ' + programFolders.length + ' program folders');
     renderPrograms();
-  } catch (e) {
-    document.getElementById('panel-programs').innerHTML = '<div class="loading">Failed to load programs: ' + e.message + '</div>';
+  } else {
+    dbg('FAILED /rest/programs: ' + progsRes.reason);
+    document.getElementById('panel-programs').innerHTML = '<div class="loading">Failed: ' + progsRes.reason + '</div>';
   }
 
-  try {
-    const [intDefs, stateDefs, intVals, stateVals] = await Promise.all([
-      api('/rest/vars/definitions/1'),
-      api('/rest/vars/definitions/2'),
-      api('/rest/vars/get/1'),
-      api('/rest/vars/get/2')
-    ]);
-    parseVariables(intDefs, stateDefs, intVals, stateVals);
+  // Variables
+  if (intDefsRes.status === 'fulfilled' && intValsRes.status === 'fulfilled' &&
+      stateDefsRes.status === 'fulfilled' && stateValsRes.status === 'fulfilled') {
+    parseVariables(intDefsRes.value, stateDefsRes.value, intValsRes.value, stateValsRes.value);
+    dbg('Parsed: ' + intVars.length + ' int vars, ' + stateVars.length + ' state vars');
     renderVariables();
-  } catch (e) {
-    document.getElementById('panel-variables').innerHTML = '<div class="loading">Failed to load variables: ' + e.message + '</div>';
+  } else {
+    const err = [intDefsRes, stateDefsRes, intValsRes, stateValsRes]
+      .filter(r => r.status === 'rejected').map(r => r.reason).join('; ');
+    dbg('FAILED variables: ' + err);
+    document.getElementById('panel-variables').innerHTML = '<div class="loading">Failed: ' + err + '</div>';
   }
 
   document.getElementById('conn-dot').style.background = 'var(--green)';
   document.getElementById('conn-label').textContent = 'Connected';
+  dbg('refreshAll done');
 }
 
 function parseNodes(xml) {
@@ -657,7 +739,19 @@ function parseNodes(xml) {
   groups = [];
   folders = [];
 
-  xml.querySelectorAll('node').forEach(n => {
+  // Debug: show root element and direct children
+  const root = xml.documentElement;
+  dbg('parseNodes root: <' + root.tagName + '> children: ' +
+    Array.from(root.children).map(c => c.tagName).slice(0, 10).join(', ') +
+    (root.children.length > 10 ? '...' : '') + ' (total: ' + root.children.length + ')');
+
+  // Use getElementsByTagName which is more reliable across XML quirks
+  const nodeEls = xml.getElementsByTagName('node');
+  const groupEls = xml.getElementsByTagName('group');
+  const folderEls = xml.getElementsByTagName('folder');
+  dbg('parseNodes found: ' + nodeEls.length + ' <node>, ' + groupEls.length + ' <group>, ' + folderEls.length + ' <folder>');
+
+  Array.from(nodeEls).forEach(n => {
     const flag = n.getAttribute('flag');
     nodes.push({
       address: n.querySelector('address')?.textContent || '',
@@ -672,9 +766,9 @@ function parseNodes(xml) {
     });
   });
 
-  xml.querySelectorAll('group').forEach(g => {
+  Array.from(groupEls).forEach(g => {
     const members = [];
-    g.querySelectorAll('link').forEach(l => members.push(l.textContent));
+    Array.from(g.getElementsByTagName('link')).forEach(l => members.push(l.textContent));
     groups.push({
       address: g.querySelector('address')?.textContent || '',
       name: g.querySelector('name')?.textContent || '',
@@ -685,7 +779,7 @@ function parseNodes(xml) {
     });
   });
 
-  xml.querySelectorAll('folder').forEach(f => {
+  Array.from(folderEls).forEach(f => {
     folders.push({
       address: f.querySelector('address')?.textContent || '',
       name: f.querySelector('name')?.textContent || ''
@@ -695,10 +789,13 @@ function parseNodes(xml) {
 
 function parseStatus(xml) {
   statusMap = {};
-  xml.querySelectorAll('node').forEach(n => {
+  const nodeEls = xml.getElementsByTagName('node');
+  Array.from(nodeEls).forEach(n => {
     const id = n.getAttribute('id');
+    if (!id) return; // skip <node> elements without id (from /rest/nodes response)
     const props = {};
-    n.querySelectorAll('property').forEach(p => {
+    const propEls = n.getElementsByTagName('property');
+    Array.from(propEls).forEach(p => {
       props[p.getAttribute('id')] = {
         value: p.getAttribute('value'),
         formatted: p.getAttribute('formatted'),
@@ -713,7 +810,7 @@ function parsePrograms(xml) {
   programs = [];
   programFolders = [];
 
-  xml.querySelectorAll('program').forEach(p => {
+  Array.from(xml.getElementsByTagName('program')).forEach(p => {
     const isFolder = p.getAttribute('folder') === 'true';
     const item = {
       id: p.getAttribute('id'),
@@ -740,10 +837,10 @@ function parseVariables(intDefs, stateDefs, intVals, stateVals) {
   stateVars = [];
 
   const intNames = {};
-  intDefs.querySelectorAll('e').forEach(e => {
+  Array.from(intDefs.getElementsByTagName('e')).forEach(e => {
     intNames[e.getAttribute('id')] = e.getAttribute('name');
   });
-  intVals.querySelectorAll('var').forEach(v => {
+  Array.from(intVals.getElementsByTagName('var')).forEach(v => {
     const id = v.getAttribute('id');
     intVars.push({
       id: id,
@@ -756,10 +853,10 @@ function parseVariables(intDefs, stateDefs, intVals, stateVals) {
   });
 
   const stateNames = {};
-  stateDefs.querySelectorAll('e').forEach(e => {
+  Array.from(stateDefs.getElementsByTagName('e')).forEach(e => {
     stateNames[e.getAttribute('id')] = e.getAttribute('name');
   });
-  stateVals.querySelectorAll('var').forEach(v => {
+  Array.from(stateVals.getElementsByTagName('var')).forEach(v => {
     const id = v.getAttribute('id');
     stateVars.push({
       id: id,
@@ -1045,12 +1142,11 @@ async function refreshStatus() {
   try {
     const xml = await api('/rest/status');
     parseStatus(xml);
-    // Re-render current tab
     const activeTab = document.querySelector('.tab.active')?.dataset.tab;
     if (activeTab === 'devices') renderDevices();
     if (activeTab === 'scenes') renderScenes();
   } catch (e) {
-    // silent
+    dbg('refreshStatus error: ' + e.message);
   }
 }
 
