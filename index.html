@@ -451,7 +451,6 @@ header h1 {
 // ── State ──
 let BASE_URL = '';
 let AUTH = '';
-let CORS_PROXY = 'https://corsproxy.io/?';
 let USE_PROXY = true; // Needed when hosted on a different domain (e.g. GitHub Pages)
 let nodes = [];
 let groups = [];
@@ -463,9 +462,22 @@ let stateVars = [];
 let statusMap = {};
 
 // ── API helpers ──
+// List of CORS proxies to try in order
+const CORS_PROXIES = [
+  { name: 'corsproxy.io', prefix: 'https://corsproxy.io/?', encode: false },
+  { name: 'allorigins', prefix: 'https://api.allorigins.win/raw?url=', encode: true },
+];
+let currentProxyIndex = 0;
+
+function proxyUrl(targetUrl) {
+  if (!USE_PROXY) return targetUrl;
+  const proxy = CORS_PROXIES[currentProxyIndex];
+  return proxy.prefix + (proxy.encode ? encodeURIComponent(targetUrl) : targetUrl);
+}
+
 function api(path, method = 'GET') {
   const targetUrl = BASE_URL + path;
-  const url = USE_PROXY ? CORS_PROXY + encodeURIComponent(targetUrl) : targetUrl;
+  const url = proxyUrl(targetUrl);
   return fetch(url, {
     method,
     headers: { 'Authorization': 'Basic ' + AUTH },
@@ -499,26 +511,47 @@ function doLogin() {
   BASE_URL = url;
   AUTH = btoa(user + ':' + pass);
   USE_PROXY = document.getElementById('login-proxy').checked;
+  currentProxyIndex = 0;
   errEl.style.display = 'none';
+  errEl.textContent = '';
 
-  // Test connection
+  // Try connecting, cycling through CORS proxies on failure
+  tryConnect(errEl, user);
+}
+
+function tryConnect(errEl, user) {
+  const proxyName = USE_PROXY ? CORS_PROXIES[currentProxyIndex].name : 'direct';
+  errEl.textContent = 'Trying ' + proxyName + '...';
+  errEl.style.display = 'block';
+  errEl.style.color = 'var(--text2)';
+
   api('/rest/config').then(xml => {
+    errEl.style.display = 'none';
+    errEl.style.color = '';
     const model = xml.querySelector('model');
     if (model) {
       showToast('Connected to ' + model.textContent);
     }
     // Save to localStorage
-    localStorage.setItem('eisy_url', url);
+    localStorage.setItem('eisy_url', BASE_URL);
     localStorage.setItem('eisy_user', user);
     localStorage.setItem('eisy_auth', AUTH);
     localStorage.setItem('eisy_proxy', USE_PROXY ? '1' : '0');
+    localStorage.setItem('eisy_proxyIndex', String(currentProxyIndex));
 
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     refreshAll();
   }).catch(err => {
-    errEl.textContent = 'Connection failed: ' + err.message + '. Check URL and credentials.';
-    errEl.style.display = 'block';
+    // Try next proxy if available
+    if (USE_PROXY && currentProxyIndex < CORS_PROXIES.length - 1) {
+      currentProxyIndex++;
+      tryConnect(errEl, user);
+    } else {
+      errEl.style.color = '';
+      errEl.textContent = 'Connection failed: ' + err.message + '. Check URL and credentials.';
+      errEl.style.display = 'block';
+    }
   });
 }
 
@@ -527,6 +560,7 @@ function doLogout() {
   localStorage.removeItem('eisy_user');
   localStorage.removeItem('eisy_auth');
   localStorage.removeItem('eisy_proxy');
+  localStorage.removeItem('eisy_proxyIndex');
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
 }
@@ -537,6 +571,7 @@ function doLogout() {
   const user = localStorage.getItem('eisy_user');
   const auth = localStorage.getItem('eisy_auth');
   const proxy = localStorage.getItem('eisy_proxy');
+  const proxyIdx = localStorage.getItem('eisy_proxyIndex');
   if (url && auth) {
     document.getElementById('login-url').value = url;
     document.getElementById('login-user').value = user || '';
@@ -544,6 +579,7 @@ function doLogout() {
       USE_PROXY = false;
       document.getElementById('login-proxy').checked = false;
     }
+    if (proxyIdx !== null) currentProxyIndex = parseInt(proxyIdx) || 0;
     BASE_URL = url;
     AUTH = auth;
     // Attempt reconnect silently
