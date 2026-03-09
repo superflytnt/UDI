@@ -462,23 +462,37 @@ let stateVars = [];
 let statusMap = {};
 
 // ── API helpers ──
-// List of CORS proxies to try in order
+// CORS proxies to try — most don't forward Authorization headers,
+// so we embed credentials in the URL for proxy requests.
 const CORS_PROXIES = [
-  { name: 'corsproxy.io', prefix: 'https://corsproxy.io/?', encode: false },
-  { name: 'allorigins', prefix: 'https://api.allorigins.win/raw?url=', encode: true },
+  { name: 'corsproxy.io', prefix: 'https://corsproxy.io/?' },
+  { name: 'allorigins', prefix: 'https://api.allorigins.win/raw?url=' },
 ];
 let currentProxyIndex = 0;
 
-function proxyUrl(targetUrl) {
-  if (!USE_PROXY) return targetUrl;
+function buildProxiedUrl(targetUrl) {
+  // Embed Basic Auth credentials directly in the URL so the proxy
+  // can authenticate with the target (proxies often strip Auth headers)
+  const urlObj = new URL(targetUrl);
+  const decoded = atob(AUTH);
+  const sepIdx = decoded.indexOf(':');
+  urlObj.username = decoded.substring(0, sepIdx);
+  urlObj.password = decoded.substring(sepIdx + 1);
+  const authedUrl = urlObj.toString();
   const proxy = CORS_PROXIES[currentProxyIndex];
-  return proxy.prefix + (proxy.encode ? encodeURIComponent(targetUrl) : targetUrl);
+  return proxy.prefix + encodeURIComponent(authedUrl);
 }
 
 function api(path, method = 'GET') {
   const targetUrl = BASE_URL + path;
-  const url = proxyUrl(targetUrl);
-  return fetch(url, {
+  if (USE_PROXY) {
+    const url = buildProxiedUrl(targetUrl);
+    return fetch(url, { method }).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.text();
+    }).then(xml => new DOMParser().parseFromString(xml, 'text/xml'));
+  }
+  return fetch(targetUrl, {
     method,
     headers: { 'Authorization': 'Basic ' + AUTH },
   }).then(r => {
