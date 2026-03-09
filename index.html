@@ -409,6 +409,10 @@ header h1 {
       <label>Password</label>
       <input type="password" id="login-pass" placeholder="Password" />
     </div>
+    <div class="field" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="login-proxy" checked style="width:auto;" />
+      <label for="login-proxy" style="margin:0;cursor:pointer;">Use CORS proxy (required for web-hosted access)</label>
+    </div>
     <button class="btn-primary" onclick="doLogin()">Connect</button>
     <div class="error-msg" id="login-error"></div>
   </div>
@@ -447,6 +451,8 @@ header h1 {
 // ── State ──
 let BASE_URL = '';
 let AUTH = '';
+let CORS_PROXY = 'https://corsproxy.io/?';
+let USE_PROXY = true; // Needed when hosted on a different domain (e.g. GitHub Pages)
 let nodes = [];
 let groups = [];
 let folders = [];
@@ -458,7 +464,8 @@ let statusMap = {};
 
 // ── API helpers ──
 function api(path, method = 'GET') {
-  const url = BASE_URL + path;
+  const targetUrl = BASE_URL + path;
+  const url = USE_PROXY ? CORS_PROXY + encodeURIComponent(targetUrl) : targetUrl;
   return fetch(url, {
     method,
     headers: { 'Authorization': 'Basic ' + AUTH },
@@ -491,6 +498,7 @@ function doLogin() {
 
   BASE_URL = url;
   AUTH = btoa(user + ':' + pass);
+  USE_PROXY = document.getElementById('login-proxy').checked;
   errEl.style.display = 'none';
 
   // Test connection
@@ -503,6 +511,7 @@ function doLogin() {
     localStorage.setItem('eisy_url', url);
     localStorage.setItem('eisy_user', user);
     localStorage.setItem('eisy_auth', AUTH);
+    localStorage.setItem('eisy_proxy', USE_PROXY ? '1' : '0');
 
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
@@ -517,6 +526,7 @@ function doLogout() {
   localStorage.removeItem('eisy_url');
   localStorage.removeItem('eisy_user');
   localStorage.removeItem('eisy_auth');
+  localStorage.removeItem('eisy_proxy');
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
 }
@@ -526,9 +536,14 @@ function doLogout() {
   const url = localStorage.getItem('eisy_url');
   const user = localStorage.getItem('eisy_user');
   const auth = localStorage.getItem('eisy_auth');
+  const proxy = localStorage.getItem('eisy_proxy');
   if (url && auth) {
     document.getElementById('login-url').value = url;
     document.getElementById('login-user').value = user || '';
+    if (proxy === '0') {
+      USE_PROXY = false;
+      document.getElementById('login-proxy').checked = false;
+    }
     BASE_URL = url;
     AUTH = auth;
     // Attempt reconnect silently
